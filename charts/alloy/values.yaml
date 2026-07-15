@@ -14,7 +14,7 @@ alloy:
   alloy:
     configMap:
       create: false
-      name: ccp-1-cm-alloy-poc
+      name: poc-v1-cm-alloy-poc
 
     extraPorts:
       - name: loki-push
