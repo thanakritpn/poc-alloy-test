@@ -1,12 +1,12 @@
 loki.write "poc" {
   endpoint {
-    url = "https://loki.ocop-demo.opsta.net/loki/api/v1/push"
+    url = "https://LOKI_URL/loki/api/v1/push"
     basic_auth {
-      username = "main"
-      password = "Admin@Opsta1"
+      username = "USERNAME"
+      password = "PASSWORD"
     }
     headers = {
-      "X-Scope-OrgID" = "main",
+      "X-Scope-OrgID" = "TENANT_ID",
     }
   }
 }
@@ -23,28 +23,28 @@ loki.process "poc" {
 
 prometheus.remote_write "poc" {
   endpoint {
-    url = "https://mimir.ocop-demo.opsta.net/api/v1/push"
+    url = "https://MIMIR_URL/api/v1/push"
     basic_auth {
-      username = "main"
-      password = "Admin@Opsta1"
+      username = "USERNAME"
+      password = "PASSWORD"
     }
     headers = {
-      "X-Scope-OrgID" = "main",
+      "X-Scope-OrgID" = "TENANT_ID",
     }
   }
 }
 
 otelcol.auth.basic "poc" {
-  username = "main"
-  password = "Admin@Opsta1"
+  username = "USERNAME"
+  password = "PASSWORD"
 }
 
 otelcol.exporter.otlphttp "poc" {
   client {
-    endpoint = "https://tempo.ocop-demo.opsta.net/otlp"
+    endpoint = "https://TEMPO_URL/otlp"
     auth     = otelcol.auth.basic.poc.handler
     headers = {
-      "X-Scope-OrgID" = "main",
+      "X-Scope-OrgID" = "TENANT_ID",
     }
   }
 }

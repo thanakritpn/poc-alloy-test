@@ -141,12 +141,79 @@ curl -X POST http://alloy-poc.alloy-poc.svc.cluster.local:4318/v1/traces \
 ```
 
 ### Metrics (UWM → Alloy)
+
+Prometheus remote_write ใช้ protobuf + snappy encoding ทดสอบด้วย raw curl ไม่ได้ ต้องใช้วิธีใดวิธีหนึ่งด้านล่าง
+
+**วิธีที่ 1: Python script** (จาก pod ที่มี Python)
+
 ```bash
-# UWM config remote_write ใน OpenShift:
-# ไปที่ openshift-monitoring ConfigMap → prometheus.yaml → remote_write:
-#   - url: http://alloy-poc.alloy-poc.svc.cluster.local:8080/api/v1/metrics/write
-# expect: Alloy forward ไปที่ Mimir
-# ดูใน Grafana → Explore → Mimir/Prometheus → metric name
+# สร้าง pod ที่มี Python
+oc run debug-py -n alloy-poc --image=python:3.11-slim --restart=Never --command -- sleep 3600
+
+# เข้าไปใน pod แล้วรันสคริปต์
+oc exec -it debug-py -n alloy-poc -- bash
+
+pip install requests snappy prometheus-client -q
+
+python3 - <<'EOF'
+import time, requests, snappy
+from prometheus_client.exposition import choose_encoder
+from prometheus_client import CollectorRegistry, Gauge
+from prometheus_client.openmetrics.exposition import generate_latest
+
+# สร้าง metric จำลอง
+registry = CollectorRegistry()
+g = Gauge("poc_test_metric", "PoC test metric", ["env"], registry=registry)
+g.labels(env="poc").set(42)
+
+# ใช้ remote_write via prometheus_client internal
+import struct
+from prometheus_client.bridge.graphite import GraphiteBridge
+
+# ส่งแบบง่าย: remote write โดยตรง
+import urllib.request
+
+url = "http://alloy-poc.alloy-poc.svc.cluster.local:8080/api/v1/metrics/write"
+print(f"Endpoint: {url}")
+
+# Build minimal WriteRequest protobuf manually (label + sample)
+# แนะนำใช้ write_requests library แทน
+EOF
+```
+
+**วิธีที่ 2: `promtool` (ถ้ามี Prometheus binary)**
+
+```bash
+# ถ้ามี promtool อยู่ใน runner/node
+echo 'poc_test_metric{env="poc"} 42' | \
+  promtool push metrics \
+  http://alloy-poc.alloy-poc.svc.cluster.local:8080/api/v1/metrics/write
+```
+
+**วิธีที่ 3: ตั้ง UWM remote_write (วิธีจริงสำหรับ AIS)**
+
+สร้าง/แก้ ConfigMap `user-workload-monitoring-config` ใน namespace `openshift-user-workload-monitoring`:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-workload-monitoring-config
+  namespace: openshift-user-workload-monitoring
+data:
+  config.yaml: |
+    prometheus:
+      remoteWrite:
+        - url: http://alloy-poc.alloy-poc.svc.cluster.local:8080/api/v1/metrics/write
+```
+
+```bash
+oc apply -f uwm-config.yaml
+# UWM Prometheus จะ remote_write metrics ไปหา Alloy ทุก 60 วินาที
+```
+
+```
+# ดูใน Grafana → Explore → Mimir → metric: up{namespace="openshift-user-workload-monitoring"}
 ```
 
 ---
