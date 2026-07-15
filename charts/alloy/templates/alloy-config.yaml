@@ -9,12 +9,14 @@
 # ============================================================================
 
 {{- /* Build tenant ID and forward_to lists from tenant alloy files */ -}}
-{{- $lokiFwds  := list -}}
-{{- $traceFwds := list -}}
+{{- $lokiFwds    := list -}}
+{{- $traceFwds  := list -}}
+{{- $metricsFwds := list -}}
 {{- range $path, $_ := .Files.Glob "tenants/**/*.alloy" -}}
   {{- $appId := trimSuffix ".alloy" (base $path) | replace "-" "_" -}}
-  {{- $lokiFwds  = append $lokiFwds  (printf "loki.process.%s.receiver" $appId) -}}
-  {{- $traceFwds = append $traceFwds (printf "otelcol.exporter.otlphttp.%s.input" $appId) -}}
+  {{- $lokiFwds    = append $lokiFwds    (printf "loki.process.%s.receiver" $appId) -}}
+  {{- $traceFwds   = append $traceFwds   (printf "otelcol.exporter.otlphttp.%s.input" $appId) -}}
+  {{- $metricsFwds = append $metricsFwds (printf "prometheus.remote_write.%s.receiver" $appId) -}}
 {{- end }}
 apiVersion: v1
 kind: ConfigMap
@@ -41,6 +43,15 @@ data:
         listen_port    = 3100
       }
       forward_to = [{{ join ", " $lokiFwds }}]
+    }
+
+    // UWM receiver: Prometheus remote_write → fan-out to every tenant's remote_write
+    prometheus.receive_http "default" {
+      http {
+        listen_address = "0.0.0.0"
+        listen_port    = 9999
+      }
+      forward_to = [{{ join ", " $metricsFwds }}]
     }
 
     // OTLP receiver: apps → fan-out to every tenant's trace exporter

@@ -21,6 +21,19 @@ loki.process "poc" {
   }
 }
 
+prometheus.remote_write "poc" {
+  endpoint {
+    url = "https://mimir.ocop-demo.opsta.net/api/v1/push"
+    basic_auth {
+      username = "main"
+      password = "Admin@Opsta1"
+    }
+    headers = {
+      "X-Scope-OrgID" = "main",
+    }
+  }
+}
+
 otelcol.auth.basic "poc" {
   username = "main"
   password = "Admin@Opsta1"

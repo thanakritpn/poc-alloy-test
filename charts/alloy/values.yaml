@@ -29,6 +29,10 @@ alloy:
         port: 4318
         targetPort: 4318
         protocol: TCP
+      - name: prom-rw
+        port: 9999
+        targetPort: 9999
+        protocol: TCP
 
     resources:
       requests:
