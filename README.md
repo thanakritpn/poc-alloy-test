@@ -117,38 +117,77 @@ runs-on: dev-onprem-oci   # ← เปลี่ยนให้ตรงกับ
 
 ## ทดสอบด้วย curl
 
-หา Service IP ก่อน:
-```bash
-oc get svc -n <namespace>
+Service DNS (ใช้แทน IP ได้เลย ไม่ต้อง `oc get svc`):
+```
+alloy-poc.<namespace>.svc.cluster.local
 ```
 
 ### Logs (CLF → Alloy)
 ```bash
-curl -X POST http://<ALLOY_SVC_IP>:3100/loki/api/v1/push \
+ALLOY="alloy-poc.alloy-poc.svc.cluster.local"
+TIMESTAMP=$(date +%s)000000000
+
+curl -X POST http://$ALLOY:3100/loki/api/v1/push \
   -H "Content-Type: application/json" \
-  -d '{
-    "streams": [{
-      "stream": {"job": "test", "env": "poc"},
-      "values": [["'"$(date +%s)000000000"'", "test log message"]]
+  -d "{
+    \"streams\": [{
+      \"stream\": {
+        \"job\":     \"poc-test-app\",
+        \"env\":     \"poc\",
+        \"service\": \"my-service\"
+      },
+      \"values\": [[\"$TIMESTAMP\", \"ERROR: something went wrong in poc-test-app\"]]
     }]
-  }'
+  }"
 # expect: 204
+# ดูใน Grafana → Explore → Loki → {job="poc-test-app"}
 ```
 
 ### Traces (OTel → Alloy)
 ```bash
-curl -X POST http://<ALLOY_SVC_IP>:4318/v1/traces \
+ALLOY="alloy-poc.alloy-poc.svc.cluster.local"
+TRACE_ID="0af7651916cd43dd8448eb211c80319c"   # ← เอาไป search ใน Grafana Tempo
+SPAN_ID="b7ad6b7169203331"
+START=$(date +%s)000000000
+END=$(( $(date +%s) + 1 ))000000000
+
+curl -X POST http://$ALLOY:4318/v1/traces \
   -H "Content-Type: application/json" \
-  -d '{"resourceSpans":[]}'
+  -d "{
+    \"resourceSpans\": [{
+      \"resource\": {
+        \"attributes\": [{
+          \"key\": \"service.name\",
+          \"value\": {\"stringValue\": \"poc-test-app\"}
+        }]
+      },
+      \"scopeSpans\": [{
+        \"spans\": [{
+          \"traceId\":           \"$TRACE_ID\",
+          \"spanId\":            \"$SPAN_ID\",
+          \"name\":              \"test-operation\",
+          \"kind\":              2,
+          \"startTimeUnixNano\": \"$START\",
+          \"endTimeUnixNano\":   \"$END\",
+          \"attributes\": [{
+            \"key\": \"http.method\",
+            \"value\": {\"stringValue\": \"GET\"}
+          }]
+        }]
+      }]
+    }]
+  }"
 # expect: 200
+# ดูใน Grafana → Explore → Tempo → TraceID: 0af7651916cd43dd8448eb211c80319c
 ```
 
 ### Metrics (UWM → Alloy)
 ```bash
-curl -X POST http://<ALLOY_SVC_IP>:8080/api/v1/metrics/write \
-  -H "Content-Type: application/x-protobuf" \
-  -H "X-Prometheus-Remote-Write-Version: 0.1.0"
-# expect: 400 (body ว่าง) หรือ 204 (มี data จริง)
+# UWM config remote_write ใน OpenShift:
+# ไปที่ openshift-monitoring ConfigMap → prometheus.yaml → remote_write:
+#   - url: http://alloy-poc.alloy-poc.svc.cluster.local:8080/api/v1/metrics/write
+# expect: Alloy forward ไปที่ Mimir
+# ดูใน Grafana → Explore → Mimir/Prometheus → metric name
 ```
 
 ---
