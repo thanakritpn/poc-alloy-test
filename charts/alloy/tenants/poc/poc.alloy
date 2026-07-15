@@ -6,7 +6,7 @@ loki.write "poc" {
       password = "Admin@Opsta1"
     }
     headers = {
-      "X-Scope-OrgID" = "poc",
+      "X-Scope-OrgID" = "main",
     }
   }
 }
@@ -31,7 +31,7 @@ otelcol.exporter.otlphttp "poc" {
     endpoint = "https://tempo.ocop-demo.opsta.net/otlp"
     auth     = otelcol.auth.basic.poc.handler
     headers = {
-      "X-Scope-OrgID" = "poc",
+      "X-Scope-OrgID" = "main",
     }
   }
 }
