@@ -131,6 +131,7 @@ jobs:
           helm upgrade --install alloy-poc ./charts/alloy \
             --namespace ${{ secrets.OPENSHIFT_PROJECT }} \
             --create-namespace \
+            --skip-crds \
             --timeout 10m \
             --wait
 
