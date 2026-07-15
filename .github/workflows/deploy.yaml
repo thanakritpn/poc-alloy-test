@@ -1,0 +1,203 @@
+name: Deploy Alloy PoC
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - check-only
+          - dry-run
+          - deploy
+          - delete
+
+env:
+  KUBECONFIG: /tmp/kubeconfig-${{ github.run_id }}
+
+jobs:
+  # ==============================
+  # Job 1: Connection Check
+  # ==============================
+  check-connection:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Clean up stale kubeconfig
+        run: rm -f $KUBECONFIG
+
+      - name: Login to OpenShift
+        run: |
+          oc login \
+            --token=${{ secrets.OPENSHIFT_TOKEN }} \
+            --server=${{ secrets.OPENSHIFT_SERVER }} \
+            --insecure-skip-tls-verify=true
+
+      - name: Check Connection & Permissions
+        run: |
+          echo "=== User ==="
+          oc whoami
+
+          echo "=== Switch to project ==="
+          oc project ${{ secrets.OPENSHIFT_PROJECT }}
+
+          echo "=== Current Resources ==="
+          oc get pods -n ${{ secrets.OPENSHIFT_PROJECT }}
+          oc get svc -n ${{ secrets.OPENSHIFT_PROJECT }}
+
+          echo "=== Permissions ==="
+          echo -n "create pods: ";        oc auth can-i create pods
+          echo -n "create deployments: "; oc auth can-i create deployments
+          echo -n "create configmaps: ";  oc auth can-i create configmaps
+
+      - name: Cleanup
+        if: always()
+        run: |
+          oc logout || true
+          rm -f $KUBECONFIG
+
+  # ==============================
+  # Job 2: Dry Run
+  # ==============================
+  dry-run:
+    needs: check-connection
+    if: github.event.inputs.action == 'dry-run'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Clean up stale kubeconfig
+        run: rm -f $KUBECONFIG
+
+      - name: Login to OpenShift
+        run: |
+          oc login \
+            --token=${{ secrets.OPENSHIFT_TOKEN }} \
+            --server=${{ secrets.OPENSHIFT_SERVER }} \
+            --insecure-skip-tls-verify=true
+
+      - name: Helm Lint
+        run: helm lint ./charts/alloy
+
+      - name: Helm Dry Run
+        run: |
+          helm upgrade --install alloy-poc ./charts/alloy \
+            --namespace ${{ secrets.OPENSHIFT_PROJECT }} \
+            --dry-run \
+            --debug
+
+      - name: Cleanup
+        if: always()
+        run: |
+          oc logout || true
+          rm -f $KUBECONFIG
+
+  # ==============================
+  # Job 3: Deploy
+  # ==============================
+  deploy:
+    needs: check-connection
+    if: github.event.inputs.action == 'deploy'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Clean up stale kubeconfig
+        run: rm -f $KUBECONFIG
+
+      - name: Login to OpenShift
+        run: |
+          oc login \
+            --token=${{ secrets.OPENSHIFT_TOKEN }} \
+            --server=${{ secrets.OPENSHIFT_SERVER }} \
+            --insecure-skip-tls-verify=true
+
+      - name: Clean Failed Release
+        run: |
+          STATUS=$(helm status alloy-poc -n ${{ secrets.OPENSHIFT_PROJECT }} 2>/dev/null | grep "STATUS:" | awk '{print $2}' || echo "not-found")
+          echo "Current status: $STATUS"
+          if [[ "$STATUS" =~ ^(failed|pending-install|pending-upgrade|pending-rollback)$ ]]; then
+            echo "Cleaning stuck release..."
+            helm uninstall alloy-poc -n ${{ secrets.OPENSHIFT_PROJECT }} --no-hooks || true
+          fi
+
+      - name: Helm Deploy
+        run: |
+          helm upgrade --install alloy-poc ./charts/alloy \
+            --namespace ${{ secrets.OPENSHIFT_PROJECT }} \
+            --create-namespace \
+            --timeout 10m \
+            --wait
+
+      - name: Verify Deployment
+        run: |
+          echo "=== Helm Status ==="
+          helm status alloy-poc -n ${{ secrets.OPENSHIFT_PROJECT }}
+
+          echo "=== Pods ==="
+          oc get pods -n ${{ secrets.OPENSHIFT_PROJECT }}
+
+          echo "=== Alloy Logs ==="
+          for pod in $(oc get pods -n ${{ secrets.OPENSHIFT_PROJECT }} -l app.kubernetes.io/name=alloy -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            oc logs $pod -n ${{ secrets.OPENSHIFT_PROJECT }} --tail=30 || true
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Alloy PoC Deploy" >> $GITHUB_STEP_SUMMARY
+          echo "- **Namespace**: ${{ secrets.OPENSHIFT_PROJECT }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup
+        if: always()
+        run: |
+          oc logout || true
+          rm -f $KUBECONFIG
+
+  # ==============================
+  # Job 4: Delete
+  # ==============================
+  delete:
+    needs: check-connection
+    if: github.event.inputs.action == 'delete'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Clean up stale kubeconfig
+        run: rm -f $KUBECONFIG
+
+      - name: Login to OpenShift
+        run: |
+          oc login \
+            --token=${{ secrets.OPENSHIFT_TOKEN }} \
+            --server=${{ secrets.OPENSHIFT_SERVER }} \
+            --insecure-skip-tls-verify=true
+
+      - name: Delete Release
+        run: |
+          if helm list -n ${{ secrets.OPENSHIFT_PROJECT }} -a | grep -q "alloy-poc"; then
+            helm uninstall alloy-poc -n ${{ secrets.OPENSHIFT_PROJECT }} --wait --timeout 5m || \
+            helm uninstall alloy-poc -n ${{ secrets.OPENSHIFT_PROJECT }} --no-hooks || true
+          else
+            echo "No release found"
+          fi
+
+      - name: Verify
+        run: |
+          helm list -n ${{ secrets.OPENSHIFT_PROJECT }} -a
+          oc get all -l app.kubernetes.io/name=alloy -n ${{ secrets.OPENSHIFT_PROJECT }} || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          oc logout || true
+          rm -f $KUBECONFIG

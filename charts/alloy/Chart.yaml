@@ -1,0 +1,12 @@
+apiVersion: v2
+name: ccp-global-alloy
+description: Centralized Grafana Alloy deployment for CCP tenants
+type: application
+version: 0.1.0
+appVersion: "1.17.0"
+dependencies:
+  - name: alloy
+    version: "1.10.0"
+    repository: "https://grafana.github.io/helm-charts"
+    alias: alloy
+    condition: create

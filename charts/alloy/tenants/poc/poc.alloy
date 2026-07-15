@@ -1,0 +1,29 @@
+// =========================================================
+// POC tenant config — no Vault, direct Loki forward
+// =========================================================
+
+loki.write "poc" {
+  endpoint {
+    url = "http://LOKI_URL_HERE/loki/api/v1/push"  // ← เปลี่ยนเป็น Loki URL จริง
+
+    // ถ้า Loki มี auth ให้เปิด block นี้
+    // basic_auth {
+    //   username = "USERNAME"
+    //   password = "PASSWORD"
+    // }
+  }
+  external_labels = {
+    cluster = "ccp-dev",
+    env     = "poc",
+  }
+}
+
+loki.process "poc" {
+  forward_to = [loki.write.poc.receiver]
+
+  stage.static_labels {
+    values = {
+      tenant = "poc",
+    }
+  }
+}
