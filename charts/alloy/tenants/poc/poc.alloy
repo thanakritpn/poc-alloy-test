@@ -1,20 +1,13 @@
-// =========================================================
-// POC tenant config — no Vault, direct Loki forward
-// =========================================================
-
 loki.write "poc" {
   endpoint {
-    url = "http://LOKI_URL_HERE/loki/api/v1/push"  // ← เปลี่ยนเป็น Loki URL จริง
-
-    // ถ้า Loki มี auth ให้เปิด block นี้
-    // basic_auth {
-    //   username = "USERNAME"
-    //   password = "PASSWORD"
-    // }
-  }
-  external_labels = {
-    cluster = "ccp-dev",
-    env     = "poc",
+    url = "https://loki.ocop-demo.opsta.net/loki/api/v1/push"
+    basic_auth {
+      username = "main"
+      password = "Admin@Opsta1"
+    }
+    headers = {
+      "X-Scope-OrgID" = "poc",
+    }
   }
 }
 
@@ -28,9 +21,17 @@ loki.process "poc" {
   }
 }
 
-// Trace exporter — เปลี่ยน endpoint เป็น Tempo จริงเมื่อมี
+otelcol.auth.basic "poc" {
+  username = "main"
+  password = "Admin@Opsta1"
+}
+
 otelcol.exporter.otlphttp "poc" {
   client {
-    endpoint = "http://localhost:4318"
+    endpoint = "https://tempo.ocop-demo.opsta.net/otlp"
+    auth     = otelcol.auth.basic.poc.handler
+    headers = {
+      "X-Scope-OrgID" = "poc",
+    }
   }
 }
