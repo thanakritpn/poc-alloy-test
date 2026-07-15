@@ -30,8 +30,8 @@ alloy:
         targetPort: 4318
         protocol: TCP
       - name: prom-rw
-        port: 9999
-        targetPort: 9999
+        port: 8080
+        targetPort: 8080
         protocol: TCP
 
     resources:
