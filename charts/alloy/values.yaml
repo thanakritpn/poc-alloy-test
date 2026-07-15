@@ -1,5 +1,9 @@
 create: true
 
+templateName: "poc"
+templateVersion: "v1"
+environment: "poc"
+
 alloy:
   namespaceOverride: alloy-poc
 
