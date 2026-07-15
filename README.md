@@ -124,59 +124,18 @@ alloy-poc.<namespace>.svc.cluster.local
 
 ### Logs (CLF → Alloy)
 ```bash
-ALLOY="alloy-poc.alloy-poc.svc.cluster.local"
-TIMESTAMP=$(date +%s)000000000
-
-curl -X POST http://$ALLOY:3100/loki/api/v1/push \
+curl -X POST http://alloy-poc.alloy-poc.svc.cluster.local:3100/loki/api/v1/push \
   -H "Content-Type: application/json" \
-  -d "{
-    \"streams\": [{
-      \"stream\": {
-        \"job\":     \"poc-test-app\",
-        \"env\":     \"poc\",
-        \"service\": \"my-service\"
-      },
-      \"values\": [[\"$TIMESTAMP\", \"ERROR: something went wrong in poc-test-app\"]]
-    }]
-  }"
+  -d '{"streams":[{"stream":{"job":"poc-test-app","env":"poc","service":"my-service"},"values":[["1750000000000000000","ERROR: something went wrong in poc-test-app"]]}]}'
 # expect: 204
 # ดูใน Grafana → Explore → Loki → {job="poc-test-app"}
 ```
 
 ### Traces (OTel → Alloy)
 ```bash
-ALLOY="alloy-poc.alloy-poc.svc.cluster.local"
-TRACE_ID="0af7651916cd43dd8448eb211c80319c"   # ← เอาไป search ใน Grafana Tempo
-SPAN_ID="b7ad6b7169203331"
-START=$(date +%s)000000000
-END=$(( $(date +%s) + 1 ))000000000
-
-curl -X POST http://$ALLOY:4318/v1/traces \
+curl -X POST http://alloy-poc.alloy-poc.svc.cluster.local:4318/v1/traces \
   -H "Content-Type: application/json" \
-  -d "{
-    \"resourceSpans\": [{
-      \"resource\": {
-        \"attributes\": [{
-          \"key\": \"service.name\",
-          \"value\": {\"stringValue\": \"poc-test-app\"}
-        }]
-      },
-      \"scopeSpans\": [{
-        \"spans\": [{
-          \"traceId\":           \"$TRACE_ID\",
-          \"spanId\":            \"$SPAN_ID\",
-          \"name\":              \"test-operation\",
-          \"kind\":              2,
-          \"startTimeUnixNano\": \"$START\",
-          \"endTimeUnixNano\":   \"$END\",
-          \"attributes\": [{
-            \"key\": \"http.method\",
-            \"value\": {\"stringValue\": \"GET\"}
-          }]
-        }]
-      }]
-    }]
-  }"
+  -d '{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"poc-test-app"}}]},"scopeSpans":[{"spans":[{"traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331","name":"test-operation","kind":2,"startTimeUnixNano":"1750000000000000000","endTimeUnixNano":"1750000001000000000","attributes":[{"key":"http.method","value":{"stringValue":"GET"}}]}]}]}]}'
 # expect: 200
 # ดูใน Grafana → Explore → Tempo → TraceID: 0af7651916cd43dd8448eb211c80319c
 ```
