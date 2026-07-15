@@ -1,7 +1,7 @@
 create: true
 
 alloy:
-  namespaceOverride: alloy
+  namespaceOverride: alloy-poc
 
   controller:
     type: deployment    # เปลี่ยนจาก daemonset → ไม่ชนกับ alloy เดิม
